@@ -1,112 +1,63 @@
-name: CI-CD Pipeline
+name: DevSecOps Pipeline
 
 on:
   push:
     branches:
       - master
 
-env:
-  APP_PORT: 3000
-  IMAGE_NAME: rahamshaik/zomatoimage
-  CONTAINER_NAME: gabr1_app
-
 jobs:
-  build-test-package:
-    runs-on: ubuntu-latest
 
-    permissions:
-      contents: read
-      security-events: write
+  build:
+
+    runs-on: ubuntu-latest
 
     steps:
 
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+    - name: Checkout Code
+      uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: 'npm'
+    - name: Setup NodeJS
+      uses: actions/setup-node@v4
+      with:
+        node-version: 18
 
-      - name: Install Dependencies
-        run: npm ci
+    - name: Install Dependencies
+      run: npm install
 
-      - name: Clean Old Build
-        run: rm -rf dist || true
+    - name: Install Sonar Scanner
+      run: npm install -g sonarqube-scanner
 
-      - name: Build Application
-        run: npm run build
+    - name: SonarQube Scan
+      uses: SonarSource/sonarqube-scan-action@v6
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      with:
+        args: >
+          -Dsonar.projectKey=zomato
+          -Dsonar.projectName=zomato
 
-      - name: Run Tests
-        run: echo "my test case is passed."
+    - name: Install Trivy
+      run: |
+        wget https://github.com/aquasecurity/trivy/releases/download/v0.18.3/trivy_0.18.3_Linux-64bit.tar.gz
+        tar zxvf trivy_0.18.3_Linux-64bit.tar.gz
+        sudo mv trivy /usr/local/bin/
 
-      #  OWASP Dependency Check (SCA)
-     # - name: Run OWASP Dependency Check
-       # uses: dependency-check/Dependency-Check_Action@main
-     #   with:
-       #   project: "zomato-app"
-        #  path: "."
-         # format: "SARIF"
-          #out: "reports"
-        #  args: >
-        #   --enableRetired
-        #   --enableExperimental
-         #   --failOnCVSS 7 */
+    - name: Trivy File Scan
+      run: trivy fs .
 
-     # - name: Upload OWASP Report to GitHub Security
-     #  uses: github/codeql-action/upload-sarif@v3
-     #  with:
-    #     sarif_file: reports/dependency-check-report.sarif
+    - name: Build Docker Image
+      run: docker build -t image1 .
 
-      #  Build Docker Image
-      - name: Build Docker Image
-        run: docker build -t $IMAGE_NAME:${{ github.sha }} .
+    - name: Tag Docker Image
+      run: docker tag image1 siddu009/mydockerprojectfor5pm:myzomatoimage
 
-      - name: Tag Image
-        run: docker tag $IMAGE_NAME:${{ github.sha }} $IMAGE_NAME:latest
+    - name: Docker Login
+      run: |
+        echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
-      #  Install Trivy (Pinned version)
-      # ...
-      # ...
-      - name: Install Trivy
-        uses: aquasecurity/setup-trivy@e07451d2e059ed86c2870430ea286b3a9e0bf241
+    - name: Push Docker Image
+      run: docker push siddu009/mydockerprojectfor5pm:myzomatoimage
 
-      
-      #  Scan Filesystem
-      - name: Run Trivy FS Scan
-        uses: aquasecurity/trivy-action@v0.20.0
-        with:
-          scan-type: 'fs'
-          severity: 'CRITICAL,HIGH'
-          format: 'sarif'
-          output: 'trivy-fs.sarif'
-
-      #  Scan Docker Image
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: '$IMAGE_NAME:${{ github.sha }}'
-          format: 'table'
-          exit-code: '1'
-          ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
-
-      - name: Upload Trivy Results
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: trivy-image.sarif
-
-      #  Login Securely
-      - name: Login to DockerHub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USER }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      #  Push Image
-      - name: Push Docker Image
-        run: |
-          docker push $IMAGE_NAME:${{ github.sha }}
-          docker push $IMAGE_NAME:latest
+    - name: Trivy Image Scan
+      run: trivy image siddu009/mydockerprojectfor5pm:myzomatoimageSTEP-8: Push Code to GitHub
